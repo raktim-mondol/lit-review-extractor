@@ -1,0 +1,45 @@
+# Environment variables (contains API keys)
+.env
+
+# Input corpus (keep local, do not version)
+paper_in_markdown/
+
+# Outputs
+result/
+
+# Python cache / venv
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Editor / tooling
+.cursor/
+.ruff_cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+# Environment variables (contains API keys — never commit)
+.env
+
+# Output folder
+result/
+paper_in_markdown/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Editor / tooling
+.cursor/
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db

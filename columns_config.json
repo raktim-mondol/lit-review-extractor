@@ -1,0 +1,107 @@
+[
+  {
+    "group": "Paper metadata",
+    "column_name": "Paper Title",
+    "field_key": "paper_title",
+    "description": "Copy the official paper title verbatim as shown on the first page or in metadata (subtitle included if part of the title). Do not paraphrase. If no title appears in the text, use Not Reported (NR)",
+    "width": 35
+  },
+  {
+    "group": "Paper metadata",
+    "column_name": "Paper Type",
+    "field_key": "paper_type",
+    "description": "Exactly one label: Experimental — primary empirical work with methods, data, and results (training/evaluation, user study with data, etc.); Literature Review — survey, overview, or synthesis without new primary experiments; Mixed — substantial both (e.g. review plus new experiments). Base this on abstract, introduction, and methods. If impossible to classify, use Not Reported (NR)",
+    "width": 18
+  },
+  {
+    "group": "Paper metadata",
+    "column_name": "Journal or Conference",
+    "field_key": "journal_or_conference",
+    "description": "Exactly one: Journal — article in a serial journal or letter/short communication in a journal; Conference — peer-reviewed full paper in conference or workshop proceedings (including CVPR-style venues). Infer from citation block, header, or DOI landing page (look for proceedings, Proc., IEEE, LNCS, etc.). Preprints only on arXiv/medRxiv/bioRxiv with no later venue: use Not Reported (NR). If still ambiguous, use Not Reported (NR)",
+    "width": 18
+  },
+  {
+    "group": "Paper metadata",
+    "column_name": "Full BibTeX Reference",
+    "field_key": "full_bib_reference",
+    "description": "Best effort: a single BibTeX entry (@article, @inproceedings, etc.) if the paper provides BibTeX or enough fields to construct it; otherwise paste the complete bibliographic string exactly as printed on the paper (authors, title, venue, year, volume/issue/pages, DOI, URL). Include all identifiers present. If almost nothing is available, use Not Reported (NR)",
+    "width": 50
+  },
+  {
+    "group": "Paper metadata",
+    "column_name": "Year",
+    "field_key": "year",
+    "description": "Four-digit calendar year of the cited publication (not submission date unless that is the only stated year). Prefer copyright line, reference metadata, or accepted/published date. Output digits only, e.g. 2024. If missing, use Not Reported (NR)",
+    "width": 8
+  },
+  {
+    "group": "Dataset",
+    "column_name": "Cancer Type",
+    "field_key": "cancer_type",
+    "description": "Primary cancer site, histology, or cohort label as stated (e.g. breast, lung, colorectal, prostate, skin melanoma). Separate multiple sites with semicolons. If the work is general methodology with no specific cancer, say General / not cancer-specific. If cancer is only mentioned in passing and not a study focus, use Not Reported (NR)",
+    "width": 20
+  },
+  {
+    "group": "Dataset",
+    "column_name": "Histopathology Images",
+    "field_key": "histopathology_images",
+    "description": "One concise line. Yes — Discussed: paper talks about histopathology images but does not run experiments on them. Yes — Used: experiments, models, or analysis use histopathology or whole-slide / patch / H&E or IHC tissue images. Yes — Both: if both apply. No: no histopathology imaging in scope. Use Not Reported (NR) only if the text does not allow a determination",
+    "width": 28
+  },
+  {
+    "group": "Dataset",
+    "column_name": "Dataset",
+    "field_key": "dataset",
+    "description": "Named datasets, cohorts, or benchmarks (public names like TCGA, CAMELYON, PatchCamelyon, etc.; private hospital cohorts with institution anonymized if given). Note approximate size (n slides/patients/patches) if stated. Semicolon-separated if several. If only synthetic data or no dataset section, say so briefly. If nothing identifiable, use Not Reported (NR)",
+    "width": 25
+  },
+  {
+    "group": "Core topic",
+    "column_name": "Bias Type / Source",
+    "field_key": "bias_type_source",
+    "description": "What biases are discussed or analyzed: types (e.g. demographic, selection, label, confounding, batch/scanner/staining/site, class imbalance) and suspected sources (e.g. single-site data, labeling protocol). Tie to pathology/ML context when relevant. Semicolon-separated short phrases. If the paper does not meaningfully address bias or fairness, use Not Reported (NR)",
+    "width": 30
+  },
+  {
+    "group": "Core topic",
+    "column_name": "Limitations",
+    "field_key": "limitations",
+    "description": "Limitations the authors state (limitations subsection, discussion, or conclusion). Short bullet-style phrases separated by semicolons; keep their wording where possible. If the paper lists no limitations and none are clearly implied as caveats, use Not Reported (NR)",
+    "width": 35
+  },
+  {
+    "group": "Core topic",
+    "column_name": "Fairness Metric",
+    "field_key": "fairness_metric",
+    "description": "Fairness or equity metrics named and used (e.g. demographic parity, equalized odds, calibration across groups, fairness-accuracy tradeoff measures). Note protected attributes if specified (age, sex, race, site). If fairness is discussed only qualitatively with no named metric, summarize in one short phrase. If not applicable to this paper, use Not Reported (NR)",
+    "width": 25
+  },
+  {
+    "group": "Core topic",
+    "column_name": "Mitigation Method",
+    "field_key": "mitigation_method",
+    "description": "Extract mitigation/fairness methods. For experimental papers: report the proposed/implemented method(s) and where applied (training, inference, or post-processing). For literature review/survey papers: list all mitigation methods discussed in the paper (semicolon-separated), grouped briefly by type when possible (preprocessing, in-processing, post-processing). If only recommendations are given without implementation, start with Recommended only:. If none, use Not Reported (NR)",
+    "width": 30
+  },
+  {
+    "group": "Core topic",
+    "column_name": "Performance",
+    "field_key": "performance",
+    "description": "Extract performance results. For experimental papers: report the main quantitative outcomes of the proposed/implemented method(s) (e.g. AUC, accuracy, F1, sensitivity/specificity, Dice, ECE), including key numbers, metric names, and test/external validation setting if stated. For literature review/survey papers: summarize reported performance trends or representative ranges across discussed methods (do not invent numbers). Keep concise; do not paste full tables. If no quantitative results are available, use Not Reported (NR)",
+    "width": 30
+  },
+  {
+    "group": "Core topic",
+    "column_name": "Key Findings",
+    "field_key": "key_findings",
+    "description": "2–4 sentences in neutral academic tone: main contributions, what was shown empirically, and the principal takeaway for pathology or fair ML (only what the paper actually claims). No speculation. If the paper is purely positional with no findings, summarize the thesis in 1–2 sentences",
+    "width": 45
+  },
+  {
+    "group": "Core topic",
+    "column_name": "Future Work",
+    "field_key": "future_work",
+    "description": "Explicit future directions from conclusion or discussion (numbered items merged into short phrases separated by semicolons). Distinguish author-suggested work from your own ideas—only author-suggested. If none stated, use Not Reported (NR)",
+    "width": 35
+  }
+]
