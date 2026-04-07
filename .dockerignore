@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+.cursor
+.claude
+paper_in_markdown
+result
+dashboard-frontend
+dashboard_ui
+literature_review.xlsx
+__pycache__
+*.pyc
