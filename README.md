@@ -224,18 +224,6 @@ python -m http.server 5173
 
 Open [http://127.0.0.1:5173](http://127.0.0.1:5173).
 
-### 3) Optional: open the HTML file directly
-
-You can open `dashboard_ui/index.html` in the browser; ensure the API is on `http://127.0.0.1:8000` or adjust the fetch URL inside the file if needed.
-
-### 4) Optional: Vite React app
-
-```bash
-cd dashboard-frontend
-npm install
-npm run dev
-```
-
 ### Dashboard features
 
 - Totals, progress bar, **ETA** and average time per file (when available)
