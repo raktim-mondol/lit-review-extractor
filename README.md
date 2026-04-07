@@ -10,6 +10,23 @@ The default documentation assumes **OpenRouter** with MiniMax, e.g. `minimax/min
 
 ## How it works
 
+```mermaid
+flowchart LR
+    A[paper_in_markdown/*.md] --> B[process_papers.py]
+    C[columns_config.json] --> B
+    D[guideline.md<br/>optional] --> B
+    E[.env<br/>API key, base URL, model, limits] --> B
+    B --> F[result/literature_review.xlsx]
+    B --> G[result/json_outputs/*.json]
+    B --> H[result/progress_checkpoint.json]
+    B --> I[result/runtime_status.json]
+    J[dashboard_api.py] --> I
+    J --> H
+    K[dashboard_ui/index.html] --> J
+```
+
+### Processing/output map
+
 ```
 paper_in_markdown/*.md
         │
