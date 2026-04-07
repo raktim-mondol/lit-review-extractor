@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -191,3 +192,12 @@ def run_stop():
         _process_handle = None
 
     return {"ok": True, "message": "Stopped process_papers.py"}
+
+
+def main() -> None:
+    """Run dashboard API server as a console script."""
+    uvicorn.run("dashboard_api:app", host="127.0.0.1", port=8000, reload=False)
+
+
+if __name__ == "__main__":
+    main()

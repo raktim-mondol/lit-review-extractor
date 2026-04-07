@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lit-review-extractor"
+version = "1.0.1"
+description = "Mission-control literature review extractor with OpenAI-compatible model routing and FastAPI dashboard."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Raktim Mondol" }]
+dependencies = [
+  "openai",
+  "openpyxl",
+  "python-dotenv",
+  "fastapi",
+  "uvicorn[standard]",
+]
+
+[project.scripts]
+lit-review-extractor = "process_papers:main"
+lit-review-dashboard-api = "dashboard_api:main"
+
+[tool.hatch.build.targets.wheel]
+include = ["process_papers.py", "dashboard_api.py"]
