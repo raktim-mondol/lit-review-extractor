@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mission Control Dashboard</title>
+    <style>
+      :root {
+        --bg: #070d19;
+        --panel: rgba(19, 30, 52, 0.92);
+        --panel-border: #24385b;
+        --text: #eaf1ff;
+        --muted: #a5b7dc;
+        --success: #3fd68a;
+        --warn: #f7b955;
+        --danger: #ff7171;
+        --accent: #4f8cff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Inter", "Segoe UI", Arial, sans-serif;
+        background: radial-gradient(1200px 600px at 20% -10%, #132645 0%, var(--bg) 55%);
+        color: var(--text);
+      }
+      .container {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 20px;
+        display: grid;
+        gap: 14px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 14px;
+        padding: 14px 16px;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .title {
+        margin: 0;
+        font-size: 1.15rem;
+        letter-spacing: 0.2px;
+      }
+      .sub {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+      .actions {
+        margin-top: 12px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      button {
+        border: 1px solid #3f5f95;
+        background: #16315c;
+        color: #edf4ff;
+        border-radius: 8px;
+        padding: 8px 11px;
+        font-size: 0.82rem;
+        cursor: pointer;
+      }
+      button:hover { background: #1b3d74; }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .chip {
+        border: 1px solid #3f5f95;
+        background: #112442;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 0.74rem;
+        color: var(--muted);
+      }
+      .chip.running {
+        border-color: #3fa772;
+        color: #88efb7;
+        background: #10281d;
+      }
+      .chip.idle {
+        border-color: #3f5f95;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(140px, 1fr));
+        gap: 10px;
+      }
+      .metric-label {
+        color: var(--muted);
+        font-size: 0.78rem;
+        letter-spacing: 0.2px;
+      }
+      .metric {
+        font-size: 1.9rem;
+        font-weight: 700;
+        margin-top: 6px;
+      }
+      .progress-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 8px;
+      }
+      .progress-title {
+        margin: 0;
+        font-size: 0.95rem;
+      }
+      .progress-percent {
+        font-size: 1.1rem;
+        font-weight: 700;
+      }
+      .timing {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 0.78rem;
+        margin-bottom: 8px;
+      }
+      .bar {
+        width: 100%;
+        background: #10213d;
+        border-radius: 999px;
+        height: 14px;
+        overflow: hidden;
+        border: 1px solid #274676;
+      }
+      .fill {
+        height: 100%;
+        background: linear-gradient(90deg, #2fbf70, #7efcb0);
+      }
+      .activity-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 14px;
+      }
+      .kv {
+        display: flex;
+        gap: 8px;
+        min-width: 0;
+      }
+      .label {
+        color: var(--muted);
+        min-width: 72px;
+        font-size: 0.78rem;
+      }
+      .value {
+        overflow-wrap: anywhere;
+        font-size: 0.84rem;
+      }
+      .cols {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .panel-title {
+        margin: 0 0 8px;
+        font-size: 0.94rem;
+      }
+      .muted { color: var(--muted); font-size: 0.78rem; }
+      .success { color: var(--success); }
+      .warn { color: var(--warn); }
+      .danger { color: var(--danger); }
+      ul {
+        margin: 0;
+        padding-left: 18px;
+        max-height: 290px;
+        overflow: auto;
+      }
+      li { margin-bottom: 5px; }
+      .error {
+        background: #351b1f;
+        border-color: #744148;
+        color: #ffd3d9;
+      }
+      @media (max-width: 980px) {
+        .grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+        .cols { grid-template-columns: 1fr; }
+        .activity-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useEffect, useState } = React;
+
+      function CardMetric({ label, value, tone }) {
+        return (
+          <div className="card">
+            <div className="metric-label">{label}</div>
+            <div className={`metric ${tone || ""}`}>{value}</div>
+          </div>
+        );
+      }
+
+      function App() {
+        const [status, setStatus] = useState(null);
+        const [err, setErr] = useState("");
+        const [tick, setTick] = useState("");
+        const [actionMsg, setActionMsg] = useState("");
+        const [busy, setBusy] = useState(false);
+
+        useEffect(() => {
+          let active = true;
+          const run = async () => {
+            try {
+              const r = await fetch("http://127.0.0.1:8000/api/status");
+              if (!r.ok) throw new Error(`API ${r.status}`);
+              const data = await r.json();
+              if (!active) return;
+              setStatus(data);
+              setErr("");
+              setTick(new Date().toLocaleTimeString());
+            } catch (e) {
+              if (!active) return;
+              setErr(e.message || "Unknown error");
+            }
+          };
+          run();
+          const id = setInterval(run, 2000);
+          return () => { active = false; clearInterval(id); };
+        }, []);
+
+        const callRunAction = async (action) => {
+          setBusy(true);
+          setActionMsg("");
+          try {
+            const r = await fetch(`http://127.0.0.1:8000/api/run/${action}`, {
+              method: "POST"
+            });
+            const data = await r.json();
+            setActionMsg(data.message || `${action} completed`);
+          } catch (e) {
+            setActionMsg(`Failed to ${action}: ${e.message || "unknown error"}`);
+          } finally {
+            setBusy(false);
+          }
+        };
+
+        const totals = status?.totals || {};
+        const runtime = status?.runtime || {};
+        const runner = status?.runner || {};
+        const percent = Number(totals.progress_percent || 0);
+        const runningClass = runner.is_running ? "running" : "idle";
+
+        return (
+          <div className="container">
+            <div className="card">
+              <div className="header">
+                <div>
+                  <h2 className="title">Mission Control Dashboard</h2>
+                  <div className="sub">Auto-refresh 2s{tick ? ` | Last ${tick}` : ""}</div>
+                </div>
+                <span className={`chip ${runningClass}`}>
+                  {runner.is_running ? `RUNNING (PID ${runner.pid})` : "IDLE"}
+                </span>
+              </div>
+              <div className="actions">
+                <button onClick={() => callRunAction("start")} disabled={busy || runner.is_running}>
+                  Start Process
+                </button>
+                <button onClick={() => callRunAction("stop")} disabled={busy || !runner.is_running}>
+                  Stop Process
+                </button>
+                <span className="chip">{runtime.provider || "-"}</span>
+                <span className="chip">{runtime.model || "-"}</span>
+              </div>
+              {actionMsg ? <div className="sub">{actionMsg}</div> : null}
+            </div>
+
+            {err ? <div className="card error">API error: {err}</div> : null}
+
+            <div className="grid">
+              <CardMetric label="Total" value={totals.total ?? "-"} />
+              <CardMetric label="Completed" value={totals.completed ?? "-"} tone="success" />
+              <CardMetric label="Failed" value={totals.failed ?? "-"} tone="danger" />
+              <CardMetric label="Pending" value={totals.pending ?? "-"} tone="warn" />
+            </div>
+
+            <div className="card">
+              <div className="progress-row">
+                <h3 className="progress-title">Progress</h3>
+                <div className="progress-percent">{percent.toFixed(2)}%</div>
+              </div>
+              <div className="timing">
+                <span>ETA left: {runtime.eta_human || "N/A"}</span>
+                <span>Avg/file: {runtime.avg_file_human || "N/A"}</span>
+                <span>Last file: {runtime.last_file_seconds ? `${runtime.last_file_seconds}s` : "-"}</span>
+              </div>
+              <div className="bar"><div className="fill" style={{ width: `${Math.min(percent, 100)}%` }} /></div>
+            </div>
+
+            <div className="card">
+              <h3 className="panel-title">Current Activity</h3>
+              <div className="activity-grid">
+                <div className="kv"><span className="label">State</span><span className="value">{runtime.state || "-"}</span></div>
+                <div className="kv"><span className="label">Route</span><span className="value">{runtime.route || "-"}</span></div>
+                <div className="kv"><span className="label">Provider</span><span className="value">{runtime.provider || "-"}</span></div>
+                <div className="kv"><span className="label">Model</span><span className="value">{runtime.model || "-"}</span></div>
+                <div className="kv"><span className="label">Serial</span><span className="value">{runtime.current_serial || "-"}</span></div>
+                <div className="kv"><span className="label">Attempt</span><span className="value">{runtime.attempt || "-"}</span></div>
+                <div className="kv"><span className="label">File</span><span className="value">{runtime.current_file || "-"}</span></div>
+                <div className="kv"><span className="label">Updated</span><span className="value">{runtime.updated_at || "-"}</span></div>
+                <div className="kv"><span className="label">Message</span><span className="value">{runtime.message || "-"}</span></div>
+              </div>
+            </div>
+
+            <div className="cols">
+              <div className="card">
+                <h3 className="panel-title">Pending Files (Preview)</h3>
+                <ul>{(status?.pending_files_preview || []).map(x => <li key={x}>{x}</li>)}</ul>
+              </div>
+              <div className="card">
+                <h3 className="panel-title">Recent JSON Outputs</h3>
+                <ul>{(status?.recent_outputs || []).map(x => <li key={x.file}>{x.file}<div className="muted">{x.modified_at}</div></li>)}</ul>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>

@@ -42,6 +42,7 @@ import os
 import shutil
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -59,9 +60,18 @@ DASHSCOPE_BASE_URL = os.environ.get(
     "DASHSCOPE_BASE_URL", "https://coding-intl.dashscope.aliyuncs.com/v1"
 )
 MODEL = os.environ.get("DASHSCOPE_MODEL", "qwen3-max-2026-01-23")
+ALT_DASHSCOPE_API_KEY = os.environ.get("ALT_DASHSCOPE_API_KEY", "")
+ALT_DASHSCOPE_BASE_URL = os.environ.get("ALT_DASHSCOPE_BASE_URL", "")
+ALT_DASHSCOPE_MODEL = os.environ.get("ALT_DASHSCOPE_MODEL", "")
+ALT_DASHSCOPE_MODELS = os.environ.get("ALT_DASHSCOPE_MODELS", "")
+ALT_EACH_MODEL_BATCH = int(
+    os.environ.get("ALT_EACH_MODEL_BATCH", os.environ.get("ALT_FIRST_BATCH", "3"))
+)
+PRIMARY_NEXT_BATCH = int(os.environ.get("PRIMARY_NEXT_BATCH", "5"))
 RETRY_ATTEMPTS = 3
 RETRY_DELAY = 10  # seconds between retries
 SLEEP_BETWEEN_CALLS = 2  # seconds between successful API calls
+MAX_PAPER_CHARS = int(os.environ.get("MAX_PAPER_CHARS", "180000"))
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -70,6 +80,7 @@ RESULT_DIR = SCRIPT_DIR / "result"
 EXCEL_OUTPUT = RESULT_DIR / "literature_review.xlsx"
 JSON_OUTPUT_DIR = RESULT_DIR / "json_outputs"
 CHECKPOINT_FILE = RESULT_DIR / "progress_checkpoint.json"
+RUNTIME_STATUS_FILE = RESULT_DIR / "runtime_status.json"
 GUIDELINE_PATH = SCRIPT_DIR / "guideline.md"
 COLUMNS_CONFIG_PATH = SCRIPT_DIR / "columns_config.json"
 
@@ -166,12 +177,70 @@ def load_system_prompt() -> str:
 
 def load_checkpoint() -> dict:
     if CHECKPOINT_FILE.exists():
-        return json.loads(CHECKPOINT_FILE.read_text(encoding="utf-8"))
-    return {"completed": [], "failed": []}
+        checkpoint = json.loads(CHECKPOINT_FILE.read_text(encoding="utf-8"))
+        checkpoint.setdefault("completed", [])
+        checkpoint.setdefault("failed", [])
+        checkpoint.setdefault("completed_files", [])
+        checkpoint.setdefault("failed_files", [])
+        return checkpoint
+    return {"completed": [], "failed": [], "completed_files": [], "failed_files": []}
 
 
 def save_checkpoint(checkpoint: dict) -> None:
+    # Keep checkpoint lists deterministic and duplicate-free for stable resumes.
+    checkpoint["completed"] = sorted({str(x) for x in checkpoint.get("completed", [])})
+    checkpoint["failed"] = sorted({str(x) for x in checkpoint.get("failed", [])})
+    checkpoint["completed_files"] = sorted(
+        {str(x) for x in checkpoint.get("completed_files", [])}
+    )
+    checkpoint["failed_files"] = sorted(
+        {str(x) for x in checkpoint.get("failed_files", [])}
+    )
     CHECKPOINT_FILE.write_text(json.dumps(checkpoint, indent=2), encoding="utf-8")
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def update_runtime_status(**fields) -> None:
+    """Persist a small live status payload for dashboard polling."""
+    payload = {}
+    if RUNTIME_STATUS_FILE.exists():
+        try:
+            payload = json.loads(RUNTIME_STATUS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+    payload.update(fields)
+    payload["updated_at"] = utc_now_iso()
+    RUNTIME_STATUS_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def update_timing_stats(file_duration_sec: float) -> None:
+    """
+    Keep lightweight rolling timing stats for ETA estimation.
+    Uses only current run data and ignores skipped files.
+    """
+    payload = {}
+    if RUNTIME_STATUS_FILE.exists():
+        try:
+            payload = json.loads(RUNTIME_STATUS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+
+    processed = int(payload.get("processed_in_run", 0))
+    avg_sec = float(payload.get("avg_file_seconds", 0.0))
+    new_processed = processed + 1
+    new_avg = (
+        ((avg_sec * processed) + file_duration_sec) / new_processed
+        if new_processed > 0
+        else file_duration_sec
+    )
+    payload["processed_in_run"] = new_processed
+    payload["avg_file_seconds"] = round(new_avg, 2)
+    payload["last_file_seconds"] = round(file_duration_sec, 2)
+    payload["updated_at"] = utc_now_iso()
+    RUNTIME_STATUS_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def collect_markdown_files() -> list[Path]:
@@ -293,6 +362,15 @@ def build_user_prompt(paper_content: str, columns_config: list[dict]) -> str:
 
     field_list = ", ".join(f'"{col["field_key"]}"' for col in columns_config)
 
+    trimmed_content = paper_content
+    trim_note = ""
+    if len(paper_content) > MAX_PAPER_CHARS:
+        trimmed_content = paper_content[:MAX_PAPER_CHARS]
+        trim_note = (
+            f"\n- Input text was truncated to first {MAX_PAPER_CHARS} characters "
+            "to stay within model context limits."
+        )
+
     return f"""Below is the full text of a research paper. Extract the required information and return ONLY a valid JSON object (no markdown, no explanation, no extra text) with exactly these keys:
 
 {schema}
@@ -302,18 +380,18 @@ Rules:
 - Use ONLY information explicitly stated in the paper.
 - If a field is not mentioned in the paper, use exactly: Not Reported (NR)
 - All keys must be present: {field_list}
-- Keep values concise and factual.
+- Keep values concise and factual.{trim_note}
 
 --- PAPER CONTENT START ---
-{paper_content}
+{trimmed_content}
 --- PAPER CONTENT END ---
 """
 
 
-def call_api(client: OpenAI, system_prompt: str, user_prompt: str) -> str:
+def call_api(client: OpenAI, model: str, system_prompt: str, user_prompt: str) -> str:
     """Call the API and return the assistant's text content."""
     response = client.chat.completions.create(
-        model=MODEL,
+        model=model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -377,6 +455,41 @@ def parse_args():
     return parser.parse_args()
 
 
+def select_route(
+    file_counter: int,
+    alt_enabled: bool,
+    alt_models: list[str],
+    alt_batch_per_model: int,
+    primary_batch: int,
+) -> tuple[str, str | None, str]:
+    """
+    Route current non-skipped file index to:
+    - One ALT model (each repeated N times), then
+    - PRIMARY model for configured batch, then repeat.
+    Returns: (route_kind, selected_alt_model_or_none, route_label)
+    """
+    if not alt_enabled or not alt_models or alt_batch_per_model <= 0:
+        return ("primary", None, "PRIMARY")
+
+    alt_total = len(alt_models) * alt_batch_per_model
+    cycle = alt_total + max(primary_batch, 1)
+    position = file_counter % cycle
+    if position < alt_total:
+        alt_idx = position // alt_batch_per_model
+        model = alt_models[alt_idx]
+        return ("alt", model, f"ALT-{alt_idx + 1}/{len(alt_models)}")
+    return ("primary", None, "PRIMARY")
+
+
+def detect_provider(base_url: str) -> str:
+    url = (base_url or "").lower()
+    if "openrouter.ai" in url:
+        return "openrouter"
+    if "dashscope" in url or "aliyuncs.com" in url:
+        return "dashscope"
+    return "custom"
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 
@@ -424,11 +537,57 @@ def main():
     print(f"[INFO] JSON outputs  : {JSON_OUTPUT_DIR}")
     print(f"[INFO] Papers found  : {total}")
     print(f"[INFO] User columns  : {[c['column_name'] for c in columns_config]}")
+    update_runtime_status(
+        state="running",
+        total_papers=total,
+        message="Run initialized.",
+        started_at=utc_now_iso(),
+        processed_in_run=0,
+        avg_file_seconds=0.0,
+        last_file_seconds=0.0,
+    )
 
-    client = OpenAI(base_url=DASHSCOPE_BASE_URL, api_key=DASHSCOPE_API_KEY)
+    primary_client = OpenAI(base_url=DASHSCOPE_BASE_URL, api_key=DASHSCOPE_API_KEY)
+    raw_alt_models = [
+        m.strip() for m in ALT_DASHSCOPE_MODELS.split(",") if m.strip()
+    ]
+    alt_models = raw_alt_models if raw_alt_models else ([ALT_DASHSCOPE_MODEL] if ALT_DASHSCOPE_MODEL else [])
+
+    alt_enabled = bool(
+        ALT_DASHSCOPE_API_KEY and ALT_DASHSCOPE_BASE_URL and len(alt_models) > 0
+    )
+    alt_client = (
+        OpenAI(base_url=ALT_DASHSCOPE_BASE_URL, api_key=ALT_DASHSCOPE_API_KEY)
+        if alt_enabled
+        else None
+    )
+    if alt_enabled:
+        print(
+            f"[INFO] Model routing : ALT models {alt_models} each x{ALT_EACH_MODEL_BATCH} "
+            f"-> PRIMARY({MODEL}) x{PRIMARY_NEXT_BATCH} (repeating)"
+        )
+    else:
+        print(f"[INFO] Model routing : PRIMARY only ({MODEL})")
     system_prompt = load_system_prompt()
     checkpoint = load_checkpoint()
     create_excel_if_missing(columns_config)
+
+    # Backward compatibility: map legacy serial-based progress to filenames.
+    serial_to_filename = {str(i): p.name for i, p in enumerate(md_files, start=1)}
+    completed_files = set(checkpoint.get("completed_files", []))
+    failed_files = set(checkpoint.get("failed_files", []))
+    completed_files.update(
+        serial_to_filename[s]
+        for s in checkpoint.get("completed", [])
+        if s in serial_to_filename
+    )
+    failed_files.update(
+        serial_to_filename[s]
+        for s in checkpoint.get("failed", [])
+        if s in serial_to_filename
+    )
+    checkpoint["completed_files"] = sorted(completed_files)
+    checkpoint["failed_files"] = sorted(failed_files)
 
     # Apply --force: remove forced serials from checkpoint and Excel
     if force_serials:
@@ -439,6 +598,15 @@ def main():
         checkpoint["failed"] = [
             s for s in checkpoint["failed"] if s not in force_serials
         ]
+        forced_filenames = {
+            serial_to_filename[s] for s in force_serials if s in serial_to_filename
+        }
+        checkpoint["completed_files"] = [
+            f for f in checkpoint["completed_files"] if f not in forced_filenames
+        ]
+        checkpoint["failed_files"] = [
+            f for f in checkpoint["failed_files"] if f not in forced_filenames
+        ]
         save_checkpoint(checkpoint)
         remove_excel_rows(force_serials)
 
@@ -447,6 +615,7 @@ def main():
     )
 
     n_user_cols = len(columns_config)
+    route_counter = 0
 
     for serial_int, md_path in enumerate(md_files, start=1):
         serial = str(serial_int)
@@ -456,12 +625,34 @@ def main():
         if force_serials and serial not in force_serials:
             continue
 
-        # Skip already completed (unless forced)
-        if serial in checkpoint["completed"]:
+        # Skip already completed (unless forced). Prefer filename-based resume.
+        if filename in checkpoint["completed_files"] or serial in checkpoint["completed"]:
             print(f"[SKIP] #{serial}/{total} — {filename} (already processed)")
             continue
 
         print(f"\n[PROCESSING] #{serial}/{total} — {filename}")
+        file_start = time.time()
+        route, alt_model, route_tag = select_route(
+            file_counter=route_counter,
+            alt_enabled=alt_enabled,
+            alt_models=alt_models,
+            alt_batch_per_model=ALT_EACH_MODEL_BATCH,
+            primary_batch=PRIMARY_NEXT_BATCH,
+        )
+        route_counter += 1
+        selected_model = alt_model if route == "alt" and alt_model else MODEL
+        selected_client = alt_client if route == "alt" else primary_client
+        selected_base_url = ALT_DASHSCOPE_BASE_URL if route == "alt" else DASHSCOPE_BASE_URL
+        selected_provider = detect_provider(selected_base_url)
+        update_runtime_status(
+            state="running",
+            current_serial=serial,
+            current_file=filename,
+            model=selected_model,
+            provider=selected_provider,
+            route=route_tag,
+            message=f"Processing {filename} [{selected_provider}/{selected_model}]",
+        )
 
         try:
             paper_content = md_path.read_text(encoding="utf-8", errors="replace")
@@ -475,7 +666,17 @@ def main():
             )
             append_row_to_excel(row)
             checkpoint["failed"].append(serial)
+            checkpoint["failed_files"].append(filename)
             save_checkpoint(checkpoint)
+            update_timing_stats(time.time() - file_start)
+            update_runtime_status(
+                state="running",
+                current_serial=serial,
+                current_file=filename,
+                message=f"Failed to read file: {filename}",
+                last_result="failed",
+                last_error=err_msg,
+            )
             continue
 
         user_prompt = build_user_prompt(paper_content, columns_config)
@@ -489,7 +690,22 @@ def main():
             try:
                 if attempt > 1:
                     print(f"  [API ] Retry attempt {attempt}/{RETRY_ATTEMPTS}...")
-                raw_response = call_api(client, system_prompt, user_prompt)
+                update_runtime_status(
+                    state="running",
+                    current_serial=serial,
+                    current_file=filename,
+                    model=selected_model,
+                    provider=selected_provider,
+                    route=route_tag,
+                    attempt=attempt,
+                    message=(
+                        f"Calling {selected_provider}/{selected_model} for {filename} "
+                        f"(attempt {attempt}/{RETRY_ATTEMPTS})"
+                    ),
+                )
+                raw_response = call_api(
+                    selected_client, selected_model, system_prompt, user_prompt
+                )
                 extracted = parse_json_response(raw_response)
                 success = True
                 break
@@ -524,7 +740,21 @@ def main():
             row = [serial, filename] + user_values + ["SUCCESS", ""]
             append_row_to_excel(row)
             checkpoint["completed"].append(serial)
+            checkpoint["completed_files"].append(filename)
+            checkpoint["failed"] = [s for s in checkpoint["failed"] if s != serial]
+            checkpoint["failed_files"] = [
+                f for f in checkpoint["failed_files"] if f != filename
+            ]
             save_checkpoint(checkpoint)
+            update_timing_stats(time.time() - file_start)
+            update_runtime_status(
+                state="running",
+                current_serial=serial,
+                current_file=filename,
+                message=f"Completed {filename}",
+                last_result="success",
+                last_error="",
+            )
             print(f"  [OK  ] Saved to Excel and JSON.")
         else:
             row = (
@@ -534,7 +764,17 @@ def main():
             )
             append_row_to_excel(row)
             checkpoint["failed"].append(serial)
+            checkpoint["failed_files"].append(filename)
             save_checkpoint(checkpoint)
+            update_timing_stats(time.time() - file_start)
+            update_runtime_status(
+                state="running",
+                current_serial=serial,
+                current_file=filename,
+                message=f"Failed {filename}",
+                last_result="failed",
+                last_error=last_error[:500],
+            )
             print(f"  [FAIL] Logged failure.")
 
         time.sleep(SLEEP_BETWEEN_CALLS)
@@ -546,6 +786,14 @@ def main():
     print(f"       JSONs : {JSON_OUTPUT_DIR}")
     if checkpoint["failed"]:
         print(f"       Failed serial numbers: {checkpoint['failed']}")
+    update_runtime_status(
+        state="idle",
+        current_serial=None,
+        current_file=None,
+        message="Run finished.",
+        finished_at=utc_now_iso(),
+        last_result="done",
+    )
 
 
 if __name__ == "__main__":

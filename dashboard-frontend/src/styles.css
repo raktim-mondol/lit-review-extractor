@@ -1,0 +1,119 @@
+:root {
+  font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
+  color: #e8eeff;
+  background: #0b1220;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #11203a, #090f1d 60%);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.card {
+  background: rgba(18, 28, 48, 0.88);
+  border: 1px solid #223251;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.header h1 {
+  margin: 0;
+}
+
+.header p {
+  margin: 8px 0 4px;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.metric-label {
+  color: #9cb1d8;
+  font-size: 0.9rem;
+}
+
+.metric-value {
+  margin-top: 8px;
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.progress-track {
+  width: 100%;
+  height: 14px;
+  background: #16243e;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #37d67a, #84ffb6);
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.list {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.stack > div {
+  margin-bottom: 6px;
+}
+
+.label {
+  color: #9cb1d8;
+  min-width: 78px;
+  display: inline-block;
+}
+
+.muted {
+  color: #9cb1d8;
+}
+
+.small {
+  font-size: 0.8rem;
+}
+
+.error {
+  border-color: #8d2f2f;
+  background: #321919;
+}
+
+@media (max-width: 900px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+}

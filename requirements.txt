@@ -1,3 +1,5 @@
 openai
 openpyxl
 python-dotenv
+fastapi
+uvicorn[standard]

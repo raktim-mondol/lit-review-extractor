@@ -17,6 +17,7 @@ env/
 # Editor / tooling
 .cursor/
 .ruff_cache/
+.claude/
 
 # OS files
 .DS_Store
@@ -43,3 +44,6 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Frontend dependencies
+dashboard-frontend/node_modules/

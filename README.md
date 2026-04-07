@@ -2,7 +2,9 @@
 
 Source: [github.com/raktim-mondol/lit-review-extractor](https://github.com/raktim-mondol/lit-review-extractor)
 
-Scans markdown-format papers from `paper_in_markdown/`, sends each one to a Dashscope-hosted LLM, extracts structured fields defined in `columns_config.json`, and writes a formatted Excel file to `result/`.
+Scans markdown-format papers from `paper_in_markdown/`, sends each one to an **OpenAI-compatible** chat API, extracts structured fields defined in `columns_config.json`, and writes results to `result/`. Environment variable names use the `DASHSCOPE_*` prefix for historical reasons; you can point them at **OpenRouter**, **Dashscope**, or any other compatible base URL.
+
+The default documentation assumes **OpenRouter** with MiniMax, e.g. `minimax/minimax-m2.5`.
 
 ---
 
@@ -14,13 +16,15 @@ paper_in_markdown/*.md
         ▼
  process_papers.py  ──reads──  columns_config.json  (what to extract)
         │           ──reads──  guideline.md          (system prompt, optional)
-        │           ──reads──  .env                  (API key, model, base URL)
+        │           ──reads──  .env                  (API key, base URL, model, optional limits)
         │
         ▼
  result/
- ├── literature_review.xlsx   ← one row per paper
- ├── json_outputs/            ← one JSON file per paper
- └── progress_checkpoint.json ← resume state
+ ├── literature_review.xlsx    ← one row per successful paper
+ ├── json_outputs/             ← one JSON per successful extraction
+ ├── progress_checkpoint.json   ← resume: completed / failed tracking
+ ├── runtime_status.json        ← live state for the mission-control dashboard
+ └── process_runtime.log        ← stdout when started from the dashboard API
 ```
 
 ---
@@ -38,34 +42,48 @@ pip install -r requirements.txt
 Create a `.env` file in the project root (it is gitignored — never committed):
 
 ```env
-DASHSCOPE_API_KEY=your_api_key_here
-DASHSCOPE_BASE_URL=your_provider_api_base_url
-DASHSCOPE_MODEL=qwen3-max-2026-01-23
+DASHSCOPE_API_KEY=your_openrouter_key_here
+DASHSCOPE_BASE_URL=https://openrouter.ai/api/v1
+DASHSCOPE_MODEL=minimax/minimax-m2.5
+
+# Optional: max characters of each .md sent to the model (avoids context-length errors on huge files)
+MAX_PAPER_CHARS=180000
 ```
 
 
-| Variable             | Required | Description                                  |
-| -------------------- | -------- | -------------------------------------------- |
-| `DASHSCOPE_API_KEY`  | yes      | Your Dashscope API key                       |
-| `DASHSCOPE_BASE_URL` | no       | API base URL (set this to your provider endpoint) |
-| `DASHSCOPE_MODEL`    | no       | Model name (default: `qwen3-max-2026-01-23`) |
+| Variable             | Required | Description |
+| -------------------- | -------- | ----------- |
+| `DASHSCOPE_API_KEY`  | yes      | API key for the provider at `DASHSCOPE_BASE_URL` (OpenRouter: key from [openrouter.ai](https://openrouter.ai/keys)) |
+| `DASHSCOPE_BASE_URL` | yes      | Chat Completions base URL, e.g. `https://openrouter.ai/api/v1` or your vendor’s OpenAI-compatible endpoint |
+| `DASHSCOPE_MODEL`    | yes      | Model id accepted by that API (OpenRouter: use the id shown on the model page, e.g. `minimax/minimax-m2.5`) |
+| `MAX_PAPER_CHARS`  | no       | Truncate each paper to this many characters before the API call (default `180000`). Longer inputs can trigger context-window errors on some models. |
 
+A template is in `.env.example` — copy to `.env` and adjust for your provider.
 
-A ready-to-use template is provided in `.env.example` — copy it to `.env` and fill in your credentials.
+### OpenRouter (recommended for this repo)
 
-**Available model options**
+Use the OpenRouter base URL and an OpenRouter model id:
 
+```env
+DASHSCOPE_BASE_URL=https://openrouter.ai/api/v1
+DASHSCOPE_MODEL=minimax/minimax-m2.5
+```
 
-| Model                  | Vision | Notes                              |
-| ---------------------- | ------ | ---------------------------------- |
-| `qwen3-max-2026-01-23` | no     | Default — strong general reasoning |
-| `qwen3-coder-next`     | no     | Coding-focused, latest generation  |
-| `qwen3-coder-plus`     | no     | Coding-focused, balanced           |
-| `glm-4.7`              | no     | GLM series, fast                   |
-| `glm-5`                | no     | GLM series, advanced               |
-| `MiniMax-M2.5`         | no     | MiniMax series                     |
-| `qwen3.5-plus`         | yes    | Qwen vision, plus tier             |
-| `kimi-k2.5`            | yes    | Kimi vision, strong multimodal     |
+### Dashscope (Aliyun) or other vendors
+
+Point `DASHSCOPE_BASE_URL` and `DASHSCOPE_MODEL` at that vendor’s OpenAI-compatible chat endpoint and model name.
+
+### Optional multi-model rotation
+
+`process_papers.py` supports alternating between a primary route and an `ALT_*` OpenRouter (or other) route via `ALT_DASHSCOPE_*` variables. If those are unset, a **single** model is used. See comments in `process_papers.py` for `ALT_DASHSCOPE_MODELS`, `ALT_EACH_MODEL_BATCH`, and `PRIMARY_NEXT_BATCH`.
+
+**Example models (OpenRouter ids vary — check the provider’s catalog)**
+
+| Example id / name        | Notes |
+| ------------------------ | ----- |
+| `minimax/minimax-m2.5`   | Typical default when using OpenRouter + MiniMax |
+| `qwen3.5-plus` etc.      | Use the exact string your base URL expects (Dashscope vs OpenRouter differ) |
+| Vision models            | Only relevant if you later extend the pipeline to send images |
 
 
 **3. Add your papers**
@@ -138,6 +156,9 @@ Serial numbers are assigned in alphabetical order of filenames (1-based).
 ```
 project/
 ├── process_papers.py          # Main script
+├── dashboard_api.py           # FastAPI status + run controls
+├── dashboard_ui/              # No-build dashboard (serve with http.server)
+├── dashboard-frontend/        # Optional Vite + React
 ├── columns_config.json        # Column definitions — edit this to customise output
 ├── requirements.txt           # Python dependencies
 ├── .env                       # API credentials — gitignored, never committed
@@ -146,7 +167,9 @@ project/
 └── result/                    # Output: created automatically
     ├── literature_review.xlsx
     ├── json_outputs/
-    └── progress_checkpoint.json
+    ├── progress_checkpoint.json
+    ├── runtime_status.json
+    └── process_runtime.log    # when runs are started via dashboard API
 ```
 
 ---
@@ -156,4 +179,52 @@ project/
 - Fields not found in a paper are written as `Not Reported (NR)`.
 - Alternate row shading and frozen header row are applied automatically in the Excel output.
 - The script retries failed API calls up to 3 times with a 10-second delay before logging the failure and moving on.
+- Papers that failed previously are **not** skipped on the next run unless they appear in the completed checkpoint; only successful completions are skipped.
+
+---
+
+## Mission control dashboard (FastAPI + React UI)
+
+A small dashboard shows live progress, ETA (after at least one file finishes in the run), active **provider** and **model**, and start/stop for `process_papers.py`.
+
+### 1) Start the API server
+
+From the project root:
+
+```bash
+pip install -r requirements.txt
+uvicorn dashboard_api:app --reload --host 127.0.0.1 --port 8000
+```
+
+### 2) Serve the UI (recommended)
+
+The UI in `dashboard_ui/index.html` is easiest to use when served on the same host as you use for the API (avoids browser issues with `file://`):
+
+```bash
+cd dashboard_ui
+python -m http.server 5173
+```
+
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173).
+
+### 3) Optional: open the HTML file directly
+
+You can open `dashboard_ui/index.html` in the browser; ensure the API is on `http://127.0.0.1:8000` or adjust the fetch URL inside the file if needed.
+
+### 4) Optional: Vite React app
+
+```bash
+cd dashboard-frontend
+npm install
+npm run dev
+```
+
+### Dashboard features
+
+- Totals, progress bar, **ETA** and average time per file (when available)
+- Current file, route, provider, model, API attempt
+- Pending-file preview and recent JSON outputs
+- **Start Process** / **Stop Process** (runs `process_papers.py` in the background; logs append to `result/process_runtime.log`)
+
+After changing `.env`, use **Stop** then **Start** in the dashboard so a new run reloads environment variables.
 
